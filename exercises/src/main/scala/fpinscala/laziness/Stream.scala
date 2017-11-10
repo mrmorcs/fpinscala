@@ -3,7 +3,11 @@ package fpinscala.laziness
 import Stream._
 trait Stream[+A] {
 
-  def toList: List[A] = ???
+  def toList: List[A] = 
+    this match {
+      case Empty     => Nil
+      case Cons(h,t) => h() :: t().toList
+    }
 
   def foldRight[B](z: => B)(f: (A, => B) => B): B = // The arrow `=>` in front of the argument type `B` means that the function `f` takes its second argument by name and may choose not to evaluate it.
     this match {
@@ -19,11 +23,26 @@ trait Stream[+A] {
     case Empty => None
     case Cons(h, t) => if (f(h())) Some(h()) else t().find(f)
   }
-  def take(n: Int): Stream[A] = ???
+  
+  final def take(n: Int): Stream[A] = {
+    this match {
+      case Cons(h, t) if n > 1 => cons(h(), t().take(n-1))
+      case Cons(h, _) if n == 0 => cons(h(), empty)
+      case _ => empty
+    }
+  }
 
-  def drop(n: Int): Stream[A] = ???
+  def drop(n: Int): Stream[A] = 
+    this match {
+      case Cons(h,t) if n > 0 => t().drop(n-1)
+      case _                  => this
+    }
 
-  def takeWhile(p: A => Boolean): Stream[A] = ???
+  def takeWhile(p: A => Boolean): Stream[A] = 
+    this match {
+      case Cons(h, t) if p(h()) => cons(h(), t() takeWhile p)
+      case Empty => empty
+    }
 
   def forAll(p: A => Boolean): Boolean = ???
 
