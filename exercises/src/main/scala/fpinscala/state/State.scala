@@ -67,20 +67,63 @@ object RNG {
       (h :: t, rng3)
     }
 
-  def map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] = ???
+  def doubleViaMap: Rand[Double] =
+    map(int)(_.toDouble / Int.MaxValue + 1)
 
-  def sequence[A](fs: List[Rand[A]]): Rand[List[A]] = ???
+  def map2[A,B,C](ra: Rand[A], rb: Rand[B])(f: (A, B) => C): Rand[C] =
+    rng => {
+      val (a,rng2) = ra(rng)
+      val (b,rng3) = rb(rng2)
+      (f(a,b), rng3)
+    }
 
-  def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] = ???
+  def sequence[A](fs: List[Rand[A]]): Rand[List[A]] =
+    rng => fs match {
+      case Nil => (Nil, rng)
+      case h :: t => {
+        val (nh, r) = h(rng)
+        val (nt, r2) = (sequence(t)(r))
+        (nh :: nt, r2)
+      }
+    }
+
+  def ints2(count: Int)(rng: RNG): (List[Int], RNG) =
+    sequence(List.fill(count)(int))(rng)
+
+  def flatMap[A,B](f: Rand[A])(g: A => Rand[B]): Rand[B] =
+    rng => {
+      val (rb, rng2) = map(f)(g)(rng)
+      rb(rng2)
+    }
+
+  def nonNegativeLessThan(n: Int): Rand[Int] =
+    flatMap(nonNegativeInt) { i =>
+      val mod = i % n
+      if(i + (n-1) - mod >= 0) unit(mod) else nonNegativeLessThan(n)
+    }
+
+  def mapViaFlatMap[A,B](ra: Rand[A])(f: A => B): Rand[B] =
+    flatMap(ra)(a => unit(f(a)))
+
+  def map2ViaFlatMap[A,B,C](ra: Rand[A])(rb: Rand[B])(f: (A, B) => C): Rand[C] =
+    flatMap(ra)(a => map(rb)(b => f(a,b)))
 }
 
+import State._
+
 case class State[S,+A](run: S => (A, S)) {
+
   def map[B](f: A => B): State[S, B] =
-    ???
+    flatMap(a => unit(f(a)))
+
   def map2[B,C](sb: State[S, B])(f: (A, B) => C): State[S, C] =
-    ???
-  def flatMap[B](f: A => State[S, B]): State[S, B] =
-    ???
+    flatMap(a => sb map (b => f(a,b)))
+
+  def flatMap[B](f: A => State[S, B]): State[S, B] = State {
+    (s:S) =>
+      val (a, s2) = run(s)
+      f(a).run(s2)
+  }
 }
 
 sealed trait Input
@@ -91,5 +134,28 @@ case class Machine(locked: Boolean, candies: Int, coins: Int)
 
 object State {
   type Rand[A] = State[RNG, A]
+
+  def unit[S, A](a:A): State[S, A] =
+    State { s => (a, s) }
+
+  def sequence[S, A](as: List[State[S,A]]): State[S,List[A]] =
+    as match {
+      case Nil => State(s => (Nil, s))
+      case h :: t => State(s => {
+        val (nh, s2) = h.run(s)
+        val (nt, s3) = sequence(t).run(s2)
+        (nh :: nt, s3)
+      })
+    }
+}
+
+object Candy {
+
+  def handle(input: Input): Machine => Machine =
+    (s:Machine) => (input, s) match {
+      case (Coin, Machine(_, 0, _)) => s
+
+    }
+
   def simulateMachine(inputs: List[Input]): State[Machine, (Int, Int)] = ???
 }
